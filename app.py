@@ -1519,11 +1519,15 @@ elif page == "Energy Action Planner":
 
 
    
-elif page == "Occupancy-Aware Energy Control":
-    import cv2
+
     import time
-    import streamlit as st
-    from ultralytics import YOLO
+
+    try:
+        import cv2
+        from ultralytics import YOLO
+    except ImportError as e:
+        st.error(f"Person detection dependencies could not load: {e}")
+        st.stop()
 
     st.title("Live Occupancy-Aware Energy Monitor")
 
@@ -1546,7 +1550,37 @@ elif page == "Occupancy-Aware Energy Control":
         min_value=5,
         max_value=120,
         value=15,
-        step=5
+        
+elif page == "Occupancy-Aware Energy Control":
+    import time
+    import cv2
+    import av
+    import streamlit as st
+    from ultralytics import YOLO
+    from streamlit_webrtc import (
+        webrtc_streamer,
+        VideoProcessorBase,
+        WebRtcMode,
+    )
+
+    st.title("Live Occupancy-Aware Energy Monitor")
+
+    st.write(
+        "Use your browser webcam to detect people and receive "
+        "energy-saving recommendations."
+    )
+
+    st.info(
+        "Alert-only demo. No lights, fans, or electrical "
+        "devices are controlled automatically."
+    )
+
+    no_person_seconds = st.slider(
+        "Alert if no person is detected for (seconds)",
+        min_value=5,
+        max_value=120,
+        value=15,
+        step=5,
     )
 
     confidence = st.slider(
@@ -1554,7 +1588,7 @@ elif page == "Occupancy-Aware Energy Control":
         min_value=0.10,
         max_value=0.95,
         value=0.45,
-        step=0.05
+        step=0.05,
     )
 
     st.caption(
@@ -1562,207 +1596,140 @@ elif page == "Occupancy-Aware Energy Control":
         "but can also miss people."
     )
 
-    # -----------------------------
-    # Load model once per session
-    # -----------------------------
     @st.cache_resource
     def load_person_model():
         return YOLO("yolov8n.pt")
 
-    # -----------------------------
-    # Start webcam
-    # -----------------------------
-    start_camera = st.button(
-        "Start live webcam",
-        type="primary"
+    class PersonDetector(VideoProcessorBase):
+        def __init__(self, model, conf, timeout):
+            self.model = model
+            self.conf = conf
+            self.timeout = timeout
+            self.no_person_since = None
+
+        def recv(self, frame):
+            image = frame.to_ndarray(format="bgr24")
+
+            results = self.model.predict(
+                image,
+                classes=[0],  # COCO class 0 = person
+                conf=self.conf,
+                imgsz=640,
+                verbose=False,
+            )
+
+            person_count = 0
+
+            for result in results:
+                for box in result.boxes:
+                    person_count += 1
+
+                    x1, y1, x2, y2 = map(
+                        int, box.xyxy[0].tolist()
+                    )
+
+                    cv2.rectangle(
+                        image,
+                        (x1, y1),
+                        (x2, y2),
+                        (0, 200, 0),
+                        2,
+                    )
+
+                    cv2.putText(
+                        image,
+                        "Person",
+                        (x1, max(20, y1 - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.7,
+                        (0, 200, 0),
+                        2,
+                    )
+
+            now = time.time()
+
+            if person_count > 0:
+                self.no_person_since = None
+                status = f"People detected: {person_count}"
+                color = (0, 200, 0)
+            else:
+                if self.no_person_since is None:
+                    self.no_person_since = now
+
+                elapsed = now - self.no_person_since
+
+                if elapsed >= self.timeout:
+                    status = (
+                        f"ALERT: No person detected for "
+                        f"{int(elapsed)} seconds"
+                    )
+                    color = (0, 0, 255)
+                else:
+                    remaining = max(
+                        0, int(self.timeout - elapsed)
+                    )
+                    status = (
+                        f"No person detected - alert in "
+                        f"{remaining}s"
+                    )
+                    color = (0, 165, 255)
+
+            cv2.rectangle(
+                image, (0, 0), (image.shape[1], 45),
+                (25, 25, 25), -1
+            )
+            cv2.putText(
+                image,
+                status,
+                (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.65,
+                color,
+                2,
+            )
+
+            return av.VideoFrame.from_ndarray(
+                image, format="bgr24"
+            )
+
+    st.subheader("Browser Webcam")
+
+    st.write(
+        "Select START to allow camera access. Your browser "
+        "may ask you to grant permission."
     )
 
-    if start_camera:
-        st.session_state["occupancy_camera_running"] = True
-        st.session_state["occupancy_no_person_since"] = None
+    try:
+        with st.spinner("Loading YOLO person detection model..."):
+            model = load_person_model()
 
-    stop_camera = st.button("Stop webcam")
+        webrtc_streamer(
+            key="occupancy-webrtc",
+            mode=WebRtcMode.SENDRECV,
+            video_processor_factory=lambda: PersonDetector(
+                model, confidence, no_person_seconds
+            ),
+            media_stream_constraints={
+                "video": True,
+                "audio": False,
+            },
+            rtc_configuration={
+                "iceServers": [
+                    {"urls": ["stun:stun.l.google.com:19302"]}
+                ]
+            },
+            async_processing=True,
+        )
 
-    if stop_camera:
-        st.session_state["occupancy_camera_running"] = False
+        st.caption(
+            "Green boxes indicate detected people. The video "
+            "overlay shows the occupancy status and alert timer."
+        )
 
-    # Initialize session state
-    if "occupancy_camera_running" not in st.session_state:
-        st.session_state["occupancy_camera_running"] = False
-
-    if "occupancy_no_person_since" not in st.session_state:
-        st.session_state["occupancy_no_person_since"] = None
-
-    # -----------------------------
-    # Webcam processing
-    # -----------------------------
-    if st.session_state["occupancy_camera_running"]:
-
-        video_slot = st.empty()
-        status_slot = st.empty()
-
-        cap = None
-
-        try:
-            with st.spinner("Loading person detection model..."):
-                model = load_person_model()
-
-            cap = cv2.VideoCapture(0)
-
-            if not cap.isOpened():
-                st.error(
-                    "Could not access your laptop webcam. "
-                    "Check camera permissions and close other "
-                    "apps using the camera."
-                )
-                st.session_state["occupancy_camera_running"] = False
-
-            else:
-                st.success("Webcam connected.")
-
-                # Process a bounded session. Press Stop when done.
-                session_start = time.time()
-                max_session_seconds = 300
-
-                while (
-                    st.session_state["occupancy_camera_running"]
-                    and time.time() - session_start
-                    < max_session_seconds
-                ):
-                    ret, frame = cap.read()
-
-                    if not ret:
-                        status_slot.error(
-                            "Could not read a webcam frame."
-                        )
-                        break
-
-                    # Run YOLO detection
-                    results = model.predict(
-                        frame,
-                        conf=confidence,
-                        verbose=False
-                    )
-
-                    person_detected = False
-
-                    for result in results:
-                        for box in result.boxes:
-                            class_id = int(box.cls[0])
-
-                            # COCO class 0 = person
-                            if class_id == 0:
-                                person_detected = True
-
-                                x1, y1, x2, y2 = map(
-                                    int,
-                                    box.xyxy[0].tolist()
-                                )
-
-                                cv2.rectangle(
-                                    frame,
-                                    (x1, y1),
-                                    (x2, y2),
-                                    (0, 200, 0),
-                                    2
-                                )
-
-                                cv2.putText(
-                                    frame,
-                                    "Person",
-                                    (x1, max(20, y1 - 10)),
-                                    cv2.FONT_HERSHEY_SIMPLEX,
-                                    0.7,
-                                    (0, 200, 0),
-                                    2
-                                )
-
-                    now = time.time()
-
-                    if person_detected:
-                        st.session_state[
-                            "occupancy_no_person_since"
-                        ] = None
-
-                        status_slot.success(
-                            "Person detected — no vacancy alert."
-                        )
-
-                    else:
-                        if st.session_state[
-                            "occupancy_no_person_since"
-                        ] is None:
-                            st.session_state[
-                                "occupancy_no_person_since"
-                            ] = now
-
-                        no_person_duration = (
-                            now
-                            - st.session_state[
-                                "occupancy_no_person_since"
-                            ]
-                        )
-
-                        if no_person_duration >= no_person_seconds:
-                            status_slot.warning(
-                                "⚠️ No person detected for "
-                                f"{int(no_person_duration)} seconds. "
-                                "Please check whether non-essential "
-                                "lights or equipment can be turned off."
-                            )
-                        else:
-                            remaining = max(
-                                0,
-                                no_person_seconds - no_person_duration
-                            )
-
-                            status_slot.info(
-                                "No person detected. "
-                                f"Alert in {int(remaining)} seconds "
-                                "if no person appears."
-                            )
-
-                    # Show annotated webcam frame
-                    frame_rgb = cv2.cvtColor(
-                        frame,
-                        cv2.COLOR_BGR2RGB
-                    )
-
-                    video_slot.image(
-                        frame_rgb,
-                        channels="RGB",
-                        use_container_width=True
-                    )
-
-                    time.sleep(0.05)
-
-                if (
-                    time.time() - session_start
-                    >= max_session_seconds
-                ):
-                    st.info(
-                        "The 5-minute webcam session ended. "
-                        "Press Start live webcam to begin again."
-                    )
-
-        except Exception as e:
-            st.error(f"Webcam error: {e}")
-
-        finally:
-            if cap is not None:
-                cap.release()
-
-            st.session_state["occupancy_camera_running"] = False
-
-            st.session_state[
-                "occupancy_no_person_since"
-            ] = None
-
-            st.caption("Webcam released.")
-
-    else:
-        st.warning(
-            "Webcam is stopped. Press Start live webcam to begin."
+    except Exception as e:
+        st.error(
+            "Could not initialize webcam detection. "
+            f"Details: {e}"
         )
 
     st.divider()
@@ -1772,16 +1739,15 @@ elif page == "Occupancy-Aware Energy Control":
     st.write(
         "If the room appears unoccupied, manually check "
         "whether non-essential lights or equipment can be "
-        "turned off. Do not switch off essential equipment "
+        "turned off. Never switch off essential equipment "
         "based only on camera detection."
     )
 
     st.caption(
-        "This is a prototype. Camera detection can miss people "
-        "because of occlusion, poor lighting, or camera position. "
-        "No actual energy use or savings are measured."
+        "Detection may fail because of poor lighting, "
+        "occlusion, camera position, or network restrictions. "
+        "No actual energy consumption or savings are measured."
     )
-
 
 
 elif page == "Wi-Fi Intelligence":

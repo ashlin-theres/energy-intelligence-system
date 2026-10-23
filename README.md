@@ -156,6 +156,20 @@ B.Tech — Artificial Intelligence and Data Science
 - GitHub: [@ashlin-theres](https://github.com/ashlin-theres)
 - LinkedIn: [Ashlin Theres James](https://linkedin.com/in/ashlin-theres-james-77b19132b)
 
+  **Devika Swarup**
+
+B.Tech — Artificial Intelligence and Data Science
+
+- GitHub: [@ashlin-theres](https://github.com/ashlin-theres)
+- LinkedIn: [Ashlin Theres James](https://linkedin.com/in/ashlin-theres-james-77b19132b)
+
+  **Aiswarya kallayil Rajesh**
+
+B.Tech — Artificial Intelligence and Data Science
+
+- GitHub: [@ashlin-theres](https://github.com/ashlin-theres)
+- LinkedIn: [Ashlin Theres James](https://linkedin.com/in/ashlin-theres-james-77b19132b)
+
 ## 🤝 Contributions
 
 Suggestions, feedback, and improvements are welcome. Feel free to explore the repository and contribute to making energy analysis and optimization more accessible.

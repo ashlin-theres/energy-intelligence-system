@@ -1542,15 +1542,7 @@ elif page == "Energy Action Planner":
         "the camera view may not be detected."
     )
 
-    # -----------------------------
-    # Settings
-    # -----------------------------
-    no_person_seconds = st.slider(
-        "Alert if no person is detected for (seconds)",
-        min_value=5,
-        max_value=120,
-        value=15,
-        
+   
 elif page == "Occupancy-Aware Energy Control":
     import time
     import cv2
@@ -1575,6 +1567,7 @@ elif page == "Occupancy-Aware Energy Control":
         "devices are controlled automatically."
     )
 
+    # Settings
     no_person_seconds = st.slider(
         "Alert if no person is detected for (seconds)",
         min_value=5,
@@ -1612,7 +1605,7 @@ elif page == "Occupancy-Aware Energy Control":
 
             results = self.model.predict(
                 image,
-                classes=[0],  # COCO class 0 = person
+                classes=[0],
                 conf=self.conf,
                 imgsz=640,
                 verbose=False,
@@ -1623,27 +1616,19 @@ elif page == "Occupancy-Aware Energy Control":
             for result in results:
                 for box in result.boxes:
                     person_count += 1
-
                     x1, y1, x2, y2 = map(
                         int, box.xyxy[0].tolist()
                     )
 
                     cv2.rectangle(
-                        image,
-                        (x1, y1),
-                        (x2, y2),
-                        (0, 200, 0),
-                        2,
+                        image, (x1, y1), (x2, y2),
+                        (0, 200, 0), 2
                     )
-
                     cv2.putText(
-                        image,
-                        "Person",
+                        image, "Person",
                         (x1, max(20, y1 - 10)),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7,
-                        (0, 200, 0),
-                        2,
+                        0.7, (0, 200, 0), 2
                     )
 
             now = time.time()
@@ -1660,7 +1645,7 @@ elif page == "Occupancy-Aware Energy Control":
 
                 if elapsed >= self.timeout:
                     status = (
-                        f"ALERT: No person detected for "
+                        "ALERT: No person detected for "
                         f"{int(elapsed)} seconds"
                     )
                     color = (0, 0, 255)
@@ -1669,23 +1654,22 @@ elif page == "Occupancy-Aware Energy Control":
                         0, int(self.timeout - elapsed)
                     )
                     status = (
-                        f"No person detected - alert in "
+                        "No person detected - alert in "
                         f"{remaining}s"
                     )
                     color = (0, 165, 255)
 
             cv2.rectangle(
-                image, (0, 0), (image.shape[1], 45),
-                (25, 25, 25), -1
+                image,
+                (0, 0),
+                (image.shape[1], 45),
+                (25, 25, 25),
+                -1,
             )
             cv2.putText(
-                image,
-                status,
-                (10, 30),
+                image, status, (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.65,
-                color,
-                2,
+                0.65, color, 2
             )
 
             return av.VideoFrame.from_ndarray(
@@ -1693,10 +1677,9 @@ elif page == "Occupancy-Aware Energy Control":
             )
 
     st.subheader("Browser Webcam")
-
     st.write(
-        "Select START to allow camera access. Your browser "
-        "may ask you to grant permission."
+        "Select START to allow camera access. "
+        "Your browser may ask for permission."
     )
 
     try:
@@ -1722,8 +1705,9 @@ elif page == "Occupancy-Aware Energy Control":
         )
 
         st.caption(
-            "Green boxes indicate detected people. The video "
-            "overlay shows the occupancy status and alert timer."
+            "Green boxes indicate detected people. "
+            "The video overlay displays occupancy status "
+            "and the alert timer."
         )
 
     except Exception as e:
@@ -1733,7 +1717,6 @@ elif page == "Occupancy-Aware Energy Control":
         )
 
     st.divider()
-
     st.subheader("Energy-saving recommendation")
 
     st.write(
@@ -1746,9 +1729,8 @@ elif page == "Occupancy-Aware Energy Control":
     st.caption(
         "Detection may fail because of poor lighting, "
         "occlusion, camera position, or network restrictions. "
-        "No actual energy consumption or savings are measured."
+        "Actual energy consumption and savings are not measured."
     )
-
 
 elif page == "Wi-Fi Intelligence":
     import pandas as pd
